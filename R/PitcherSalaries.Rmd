@@ -1,0 +1,142 @@
+---
+title: "Pitcher Salary"
+output: html_notebook
+---
+
+Data is from Lahman Database - http://www.seanlahman.com/baseball-archive/statistics/
+
+If not already installed run
+```{r}
+install.packages("DataCombine")
+#install.packages("Lahman")
+library(dplyr)
+library(ggplot2)
+```
+
+```{r}
+pitchers = Lahman::Pitching
+salaries = Lahman::Salaries
+```
+
+Join datasets to match playerID and yearID values
+```{r}
+df <- inner_join(pitchers, salaries, by=c("playerID"="playerID", "yearID"="yearID"))
+```
+
+```{r}
+salary_by_walks <- ggplot(df, aes(x=BB,y=salary)) +
+  geom_point() +
+  scale_x_continuous("Walks")+
+  scale_y_continuous("Salary")
+salary_by_walks
+```
+```{r}
+
+options(scipen=10000)
+salary_by_year <- ggplot(df, aes(x=yearID,y=salary)) +
+  geom_point() +
+  scale_x_continuous("Year")+
+  scale_y_continuous("Salary")
+salary_by_year+ scale_x_continuous(labels = comma)
+```
+```{r}
+linfit <- lm(salary ~ yearID + W + BB + R, data=df)
+linfit
+```
+```{r}
+library(broom)
+df_with_lm <- augment(linfit, data = df)
+resid_summary <- df_with_lm %>%
+  summarize(N=n(), avg = mean(.resid),
+            RMSE = sqrt(mean(.resid^2)))
+resid_summary
+```
+
+
+Lag by a year
+```{r}
+library(DataCombine)
+df <- slide(df, "salary", NewVar = "salary_lag1", slideBy = -1)
+df <- slide(df, "salary", NewVar = "salary_lag2", slideBy = -2)
+```
+```{r}
+linfit <- lm(salary_lag1 ~ yearID + W + BB + R, data=df)
+linfit
+```
+```{r}
+df_with_lm <- augment(linfit, data = df)
+
+resid_summary <- df_with_lm %>%
+  summarize(N=n(), avg = mean(.resid),
+            RMSE = sqrt(mean(.resid^2)))
+resid_summary
+```
+
+```{r}
+linfit <- lm(salary_lag1 ~ yearID + salary_lag2 + ERA + G, data=df)
+linfit
+```
+
+```{r}
+df_with_lm <- augment(linfit, data = df)
+
+resid_summary <- df_with_lm %>%
+  summarize(N=n(), avg = mean(.resid),
+            RMSE = sqrt(mean(.resid^2)))
+resid_summary
+```
+
+Remove pitchers that make more than 5 million in a year
+
+```{r}
+df_no_outliers <- filter(df, salary > 1000000)
+
+linfit <- lm(salary_lag1 ~ yearID + salary_lag2 + playerID + stint + lgID.x + teamID.x + W + L + G + ERA, data=df_no_outliers)
+linfit
+
+df_with_lm_no_outliers <- augment(linfit, data = df_no_outliers)
+
+resid_summary <- df_with_lm_no_outliers %>%
+  summarize(N=n(), avg = mean(.resid),
+            RMSE = sqrt(mean(.resid^2)))
+resid_summary
+```
+
+```{r}
+linfit <- lm(salary_lag1 ~ yearID + salary_lag2 + playerID + stint + lgID.x + teamID.x + W + L + G + ERA, data=df)
+
+df_augmented <- augment(linfit, data = df)
+
+resid_summary <- df_augmented %>%
+  summarize(N=n(), avg = mean(.resid),
+            RMSE = sqrt(mean(.resid^2)))
+
+#grab rmse
+rmse <- resid_summary %>%
+  pull(RMSE)
+
+resid_summary
+```
+
+
+sapub.org model
+http://article.sapub.org/10.5923.j.sports.20150502.02.html
+```{r}
+linfit <- lm(log(salary_lag1) ~ yearID + poly(SV,2) + GS + poly(BB,2) + poly(BK,2) + poly(CG,2) + L + log(salary_lag2), data=df)
+
+df_augmented <- augment(linfit, data = df)
+
+resid_summary <- df_augmented %>%
+  summarize(N=n(), avg = mean(.resid),
+            RMSE = sqrt(mean(.resid^2)))
+
+#grab rmse
+rmse <- resid_summary %>%
+  pull(RMSE)
+
+summary(linfit)
+```
+```{r}
+summary(linfit)
+```
+
