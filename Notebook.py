@@ -43,10 +43,6 @@ n_inputs = k*n
 #x = tf.placeholder(tf.float32, shape=(None, n_inputs), name="x")
 #y = tf.placeholder(tf.int32, shape=(None), name="y")
 
-n_hidden1 = 300
-n_hidden2 = 100
-n_outputs = 10
-
 x = df_train.filter(items=CONTINUOUS_COLUMNS)
 y = df_train.pop('salary')
 
@@ -61,7 +57,7 @@ predictions = clf.predict(x)
 # scores = cross_val_score(clf, x, y)
 # print(scores)
 
-print(accuracy_score(y.values, predictions.astype(int)))
+print(mean_squared_error(y.values, predictions.astype(int)))
 
 exit(1)
 

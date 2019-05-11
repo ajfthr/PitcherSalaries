@@ -7,15 +7,29 @@ Data is from Lahman Database - http://www.seanlahman.com/baseball-archive/statis
 
 If not already installed run
 ```{r}
-install.packages("DataCombine")
+#install.packages("DataCombine")
 #install.packages("Lahman")
+#install.packages("mvtnorm")
+```
+
+```{r}
 library(dplyr)
 library(ggplot2)
+library(scales)
 ```
 
 ```{r}
 pitchers = Lahman::Pitching
 salaries = Lahman::Salaries
+master = Lahman::Master
+```
+
+```{r}
+Lahman::playerInfo("johnsra05")$nameLast
+```
+
+```{r}
+pitchers <- merge(pitchers, master)
 ```
 
 Join datasets to match playerID and yearID values
@@ -24,21 +38,106 @@ df <- inner_join(pitchers, salaries, by=c("playerID"="playerID", "yearID"="yearI
 ```
 
 ```{r}
+df <- df %>%
+  mutate(pitcher_labels = sprintf("%s %s: %s", nameFirst, nameLast, yearID))
+```
+
+
+
+```{r}
+library(ggrepel)
 salary_by_walks <- ggplot(df, aes(x=BB,y=salary)) +
-  geom_point() +
-  scale_x_continuous("Walks")+
+  geom_point(color="#5e5c5c") +
+  scale_x_continuous("Walks") +
   scale_y_continuous("Salary")
-salary_by_walks
+
+salary_by_walks + geom_text_repel(data = subset(df,
+                                  BB > 140 | salary > 29000000),
+                    mapping = aes(label = pitcher_labels), color = "red") +
+  scale_y_continuous(labels = comma)
+```
+
+```{r}
+salary_by_starts <- ggplot(df, aes(x=GS,y=salary)) +
+  geom_point(color="#5e5c5c") +
+  scale_x_continuous("Starts") +
+  scale_y_continuous("Salary")
+
+salary_by_starts + geom_text_repel(data = subset(df,
+                                  salary > 26000000),
+                    mapping = aes(label = pitcher_labels), color = "red") +
+  scale_y_continuous(labels = comma)
+```
+
+```{r}
+df <- df %>%
+  mutate(Innings_Per_Game = (IPouts/3)/G)
+```
+
+
+```{r}
+salary_by_saves <- ggplot(df, aes(x=Innings_Per_Game,y=salary)) +
+  geom_point(color="#5e5c5c") +
+  scale_x_continuous("Innings Pitched Per Game") +
+  scale_y_continuous("Salary")
+
+salary_by_saves +
+  scale_y_continuous(labels = comma)
+```
+
+```{r}
+salary_by_saves <- ggplot(df, aes(x=SV,y=salary)) +
+  geom_point(color="#5e5c5c") +
+  scale_x_continuous("Saves") +
+  scale_y_continuous("Salary")
+
+salary_by_saves +
+  scale_y_continuous(labels = comma)
+```
+
+```{r}
+df_without_starters <- df %>%
+  filter(GS < 1)
+
+salary_by_saves <- ggplot(df_without_starters, aes(x=SV,y=salary)) +
+  geom_point(color="#5e5c5c") +
+  scale_x_continuous("Saves (Only Pitchers Making 15 mil or less)") +
+  scale_y_continuous("Salary")
+
+salary_by_saves +
+ 
+  scale_y_continuous(labels = comma)
+```
+
+```{r}
+library(ggplot2)
+salary_by_strikeouts <- ggplot(df, aes(x=SO,y=salary)) +
+  geom_point(color="#5e5c5c") +
+  scale_x_continuous("Strikeouts") +
+  scale_y_continuous("Salary")
+
+salary_by_strikeouts +
+  geom_text_repel(data = subset(df,
+                                SO > 320 | salary >30000000),
+                    mapping = aes(label = pitcher_labels), color = "red") +
+  scale_y_continuous(labels = comma)
 ```
 ```{r}
+df_filtered_ERA <- df %>%
+  filter(ERA < 5)
 
-options(scipen=10000)
-salary_by_year <- ggplot(df, aes(x=yearID,y=salary)) +
-  geom_point() +
-  scale_x_continuous("Year")+
+salary_by_ERA <- ggplot(df_filtered_ERA, aes(x=ERA,y=salary)) +
+  geom_point(color="#5e5c5c") +
+  scale_x_continuous("ERA") +
   scale_y_continuous("Salary")
-salary_by_year+ scale_x_continuous(labels = comma)
+
+salary_by_ERA +
+  geom_text_repel(data = subset(df_filtered_ERA,
+                                salary >26000000),
+                    mapping = aes(label = pitcher_labels), color = "red") +
+  scale_y_continuous(labels = comma)
 ```
+
 ```{r}
 linfit <- lm(salary ~ yearID + W + BB + R, data=df)
 linfit
@@ -60,9 +159,14 @@ df <- slide(df, "salary", NewVar = "salary_lag1", slideBy = -1)
 df <- slide(df, "salary", NewVar = "salary_lag2", slideBy = -2)
 ```
 ```{r}
-linfit <- lm(salary_lag1 ~ yearID + W + BB + R, data=df)
+linfit <- lm(log(salary) ~ yearID + W + L + GS + SV + BK + R + H + ERA + SO + BB, data=df)
 linfit
 ```
+```{r}
+summary(linfit)
+```
+
+
 ```{r}
 df_with_lm <- augment(linfit, data = df)
 
@@ -71,6 +175,133 @@ resid_summary <- df_with_lm %>%
             RMSE = sqrt(mean(.resid^2)))
 resid_summary
 ```
+
+```{r}
+salary_by_strikeouts <- ggplot(df_with_lm, aes(x=.resid,y=salary)) +
+  geom_point(color="#5e5c5c") +
+  scale_x_continuous("Residuals") +
+  scale_y_continuous("Salary")
+
+salary_by_strikeouts + scale_y_continuous(labels = comma)
+```
+
+```{r}
+library(DataCombine)
+df <- slide(df, "salary", NewVar = "salary_lag1", slideBy = -1)
+df <- slide(df, "salary", NewVar = "salary_lag2", slideBy = -2)
+nrow(df)
+```
+
+
+```{r}
+linfit <- lm(log(salary) ~ yearID + W + L + GS + SV + BK + SO + BB + salary_lag1, data=df)
+linfit
+```
+
+```{r}
+summary(linfit)
+```
+
+```{r}
+df_with_lm <- augment(linfit, data = df)
+salary_by_strikeouts <- ggplot(df_with_lm, aes(x=.resid,y=salary)) +
+  geom_point(color="#5e5c5c") +
+  scale_x_continuous("Residuals") +
+  scale_y_continuous("Salary")
+
+salary_by_strikeouts + scale_y_continuous(labels = comma) + geom_text_repel(data = subset(df_with_lm,
+                                  .resid < -3.1),
+                    mapping = aes(label = pitcher_labels), color = "red")
+```
+
+
+```{r}
+library(tidyverse)
+library(broom)
+library(glmnet)
+
+#df = na.omit(df)
+y <- log(df$salary)
+x <- df %>% select(yearID, W, L, GS, SV, BK, R, H, ERA, SO, BB) %>% data.matrix()
+
+lambdas <- 10^seq(3, -2, by = -.1)
+fit <- glmnet(x, y, alpha = 0, lambda = lambdas)
+summary(fit)
+```
+```{r}
+cv_fit <- cv.glmnet(x, y, alpha = 0, lambda = lambdas)
+plot(cv_fit)
+```
+```{r}
+coef(fit,s=1)
+```
+
+Tree
+```{r}
+#install.packages("rpart")
+library(rpart)
+```
+
+```{r}
+fit <- rpart(log(salary) ~ W + L + GS + SV + BK + SO + 
+    BB + ERA + R + H, method="anova", data=df)
+```
+
+```{r}
+printcp(fit)
+```
+
+```{r}
+plotcp(fit)
+```
+
+```{r}
+plot(fit, uniform=TRUE, main="Salaries")
+text(fit, use.n=TRUE, all=TRUE, cex=.8)
+```
+
+```{r}
+#install.packages("rattle")
+#install.packages("RColorBrewer")
+library(rattle)
+library(rpart.plot)
+library(RColorBrewer)
+
+# plot mytree
+fancyRpartPlot(fit, caption = NULL)
+```
+
+
+```{r}
+summary(fit)
+```
+
+
+
+```{r}
+#install.packages("MASS")
+library(MASS)
+library(broom)
+fit <- lm.ridge(log(salary) ~ yearID + W + L + GS + SV + BK + R + H + ERA + SO + BB, df, lambda = seq(0.001, .05, .01,))
+td <- tidy(fit)
+head(td)
+```
+
+```{r}
+g <- glance(fit)
+g
+```
+
+```{r}
+ggplot(td, aes(lambda, estimate, color = term)) + geom_line()
+```
+
+```{r}
+# plot of GCV versus lambda
+ggplot(td, aes(lambda, GCV)) + geom_line() +
+    geom_vline(xintercept = g$lambdaGCV, col = "red", lty = 2)
+```
+
 
 ```{r}
 linfit <- lm(salary_lag1 ~ yearID + salary_lag2 + ERA + G, data=df)
@@ -85,6 +316,7 @@ resid_summary <- df_with_lm %>%
             RMSE = sqrt(mean(.resid^2)))
 resid_summary
 ```
+
 
 Remove pitchers that make more than 5 million in a year
 
